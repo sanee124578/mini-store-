@@ -20,34 +20,44 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Middlewares
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      "https://mini-store-frontend-3yaua1wc0-sanee-kumars-projects.vercel.app" // ✔ your frontend URL
-    ],
-    credentials: true,
-  })
-);
+// ✅ PERFECT CORS FIX (Frontend + Render allowed)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://mini-store-frontend-9ev4igvdh-sanee-kumars-projects.vercel.app",
+  "https://mini-store-frontend.vercel.app",
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 app.use(express.json());
 
 // ✅ Serve Uploaded Files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// 🔍 DEBUG: Check if Render ENV is loading
+// 🔍 DEBUG
 console.log("Loaded MONGO_URI:", process.env.MONGO_URI);
 
-// ✅ MongoDB Connection (NO deprecated options)
+// ✅ MongoDB Connection
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ MongoDB Connected Successfully to:", mongoose.connection.name);
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Error:", err.message);
-  });
+  .then(() => console.log("✅ MongoDB Connected!"))
+  .catch((err) => console.error("❌ MongoDB Error:", err.message));
 
 // ✅ Routes
 app.use("/api/auth", authRoutes);

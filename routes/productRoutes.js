@@ -7,7 +7,9 @@ import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// ✅ Multer storage setup
+// ----------------------
+// CLOUDINARY STORAGE
+// ----------------------
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -17,13 +19,36 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-// ✅ Fetch all products
+// ----------------------
+// GET ALL PRODUCTS
+// ----------------------
 router.get("/", async (req, res) => {
-  const products = await Product.find();
+  try {
+    const products = await Product.find();
+    return res.json(products);
+  } catch (error) {
+    console.error("Product Fetch Error:", error);
+    return res.status(500).json({ message: "Error fetching products" });
+  }
+});
+
+// ----------------------
+// SEARCH PRODUCTS
+// ----------------------
+router.get("/search", async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.json([]);
+
+  const products = await Product.find({
+    name: { $regex: query, $options: "i" },
+  }).limit(10);
+
   res.json(products);
 });
 
-// ✅ Add new product with image upload
+// ----------------------
+// ADD PRODUCT (Image upload)
+// ----------------------
 router.post("/", verifyToken, isAdmin, upload.single("image"), async (req, res) => {
   try {
     const newProduct = new Product({
@@ -32,69 +57,31 @@ router.post("/", verifyToken, isAdmin, upload.single("image"), async (req, res) 
       price: req.body.price,
       stock: req.body.stock,
       description: req.body.description,
-      image: req.file.path,
+      image: req.file?.path || req.body.image,
     });
+
     await newProduct.save();
-    res.json({ message: "✅ Product added successfully", product: newProduct });
+
+    res.json({ message: "Product added successfully", product: newProduct });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ✅ Update product
+// ----------------------
+// DELETE PRODUCT
+// ----------------------
+router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+  await Product.findByIdAndDelete(req.params.id);
+  res.json({ message: "Product deleted successfully" });
+});
+
+// ----------------------
+// UPDATE PRODUCT
+// ----------------------
 router.put("/:id", verifyToken, isAdmin, async (req, res) => {
   const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
   res.json({ message: "Product updated!", product: updated });
-});
-   // ✅ Get all products
-router.get("/", async (req, res) => {
-  try {
-    const products = await Product.find();
-    res.json(products);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-// 📁 routes/productRoutes.js
-router.get("/search", async (req, res) => {
-  const query = req.query.q;
-  if (!query) return res.json([]);
-  const products = await Product.find({
-    name: { $regex: query, $options: "i" },
-  }).limit(10);
-  res.json(products);
-});
-
-// ✅ Add new product (Admin only)
-router.post("/add", verifyToken, isAdmin, async (req, res) => {
-  try {
-    const { name, category, price, stock, image, description } = req.body;
-
-    if (!name || !category || !price || !image) {
-      return res.status(400).json({ message: "All required fields must be filled" });
-    }
-
-    const newProduct = await Product.create({
-      name,
-      category,
-      price,
-      stock,
-      image,
-      description,
-    });
-
-    res.status(201).json({
-      message: "✅ Product added successfully",
-      product: newProduct,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-// ✅ Delete product
-router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
-  await Product.findByIdAndDelete(req.params.id);
-  res.json({ message: "🗑️ Product deleted successfully" });
 });
 
 export default router;
