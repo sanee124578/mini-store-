@@ -7,9 +7,7 @@ import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// ----------------------
-// CLOUDINARY STORAGE
-// ----------------------
+// Cloudinary Storage
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -19,22 +17,19 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-// ----------------------
-// GET ALL PRODUCTS
-// ----------------------
+
+// ✅ Get all products (MAIN ROUTE)
 router.get("/", async (req, res) => {
   try {
     const products = await Product.find();
-    return res.json(products);
+    res.json(products);
   } catch (error) {
-    console.error("Product Fetch Error:", error);
-    return res.status(500).json({ message: "Error fetching products" });
+    res.status(500).json({ message: error.message });
   }
 });
 
-// ----------------------
-// SEARCH PRODUCTS
-// ----------------------
+
+// Product Search
 router.get("/search", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.json([]);
@@ -46,42 +41,36 @@ router.get("/search", async (req, res) => {
   res.json(products);
 });
 
-// ----------------------
-// ADD PRODUCT (Image upload)
-// ----------------------
-router.post("/", verifyToken, isAdmin, upload.single("image"), async (req, res) => {
+
+// Add Product (Admin only)
+router.post("/add", verifyToken, isAdmin, async (req, res) => {
   try {
-    const newProduct = new Product({
-      name: req.body.name,
-      category: req.body.category,
-      price: req.body.price,
-      stock: req.body.stock,
-      description: req.body.description,
-      image: req.file?.path || req.body.image,
+    const { name, category, price, stock, image, description } = req.body;
+
+    const newProduct = await Product.create({
+      name,
+      category,
+      price,
+      stock,
+      image,
+      description,
     });
 
-    await newProduct.save();
-
-    res.json({ message: "Product added successfully", product: newProduct });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(201).json({
+      message: "Product added successfully",
+      product: newProduct,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-// ----------------------
-// DELETE PRODUCT
-// ----------------------
+
+// Delete Product
 router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
   await Product.findByIdAndDelete(req.params.id);
-  res.json({ message: "Product deleted successfully" });
+  res.json({ message: "Product deleted" });
 });
 
-// ----------------------
-// UPDATE PRODUCT
-// ----------------------
-router.put("/:id", verifyToken, isAdmin, async (req, res) => {
-  const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  res.json({ message: "Product updated!", product: updated });
-});
 
 export default router;

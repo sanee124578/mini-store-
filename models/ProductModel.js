@@ -12,4 +12,5 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.model("Product", productSchema);
+// 👇 third argument = EXACT collection name
+export default mongoose.model("Product", productSchema, "products");
