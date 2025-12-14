@@ -32,8 +32,6 @@ app.use(
   })
 );
 
-// 🔥 VERY IMPORTANT (preflight fix)
-app.options("*", cors());
 
 // 🧩 ES Module Path Fix
 const __filename = fileURLToPath(import.meta.url);
