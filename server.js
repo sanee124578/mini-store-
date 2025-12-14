@@ -29,7 +29,7 @@ app.use(
 );
 
 // ✅ Preflight fix (VERY IMPORTANT)
-app.options("*", cors());
+
 
 
 
