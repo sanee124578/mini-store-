@@ -74,3 +74,7 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
+app.get("/which-db", async (req, res) => {
+  const dbName = mongoose.connection.db.databaseName;
+  res.json({ connectedDatabase: dbName });
+});
