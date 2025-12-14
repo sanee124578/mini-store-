@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import Product from "../models/ProductModel.js";
 
 dotenv.config();
-
 const products = [
   // 🧥 CLOTHES (25)
   {

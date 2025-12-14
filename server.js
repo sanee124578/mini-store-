@@ -15,7 +15,11 @@ import orderRoutes from "./routes/orderRoutes.js";
 
 dotenv.config();
 const app = express();
-
+app.use(cors({
+  origin: "https://mini-store-frontend-qkle7tjqa-sanee-kumars-projects.vercel.app",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 // 🧩 Path fix for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
