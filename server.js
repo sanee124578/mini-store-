@@ -54,6 +54,15 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/orders", orderRoutes);
+// 🔍 TEMP DEBUG ROUTE – CHECK WHICH DB BACKEND IS USING
+app.get("/which-db", (req, res) => {
+  try {
+    const dbName = mongoose.connection.db.databaseName;
+    res.json({ connectedDatabase: dbName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 🟢 Default Route
 app.get("/", (req, res) => {
@@ -74,7 +83,3 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
-app.get("/which-db", async (req, res) => {
-  const dbName = mongoose.connection.db.databaseName;
-  res.json({ connectedDatabase: dbName });
-});
