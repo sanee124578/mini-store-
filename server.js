@@ -18,17 +18,22 @@ import orderRoutes from "./routes/orderRoutes.js";
 dotenv.config();
 const app = express();
 
-// 🟢 FINAL CORS (ONLY ONE – NO CONFLICT)
+// 🟢 FINAL CORS — FIXED 100%
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
       "https://mini-store-frontend-qkle7tjqa-sanee-kumars-projects.vercel.app",
+      "https://mini-store-frontend-i59kixdew-sanee-kumars-projects.vercel.app"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
   })
 );
+
+// 🔥 VERY IMPORTANT (preflight fix)
+app.options("*", cors());
 
 // 🧩 ES Module Path Fix
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +43,7 @@ const __dirname = path.dirname(__filename);
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// 🔍 Debug (safe)
+// 🔍 Debug
 console.log("🚀 Server starting...");
 
 // ✅ MongoDB Connection
@@ -54,14 +59,11 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/orders", orderRoutes);
-// 🔍 TEMP DEBUG ROUTE – CHECK WHICH DB BACKEND IS USING
+
+// 🔍 DB Check Route
 app.get("/which-db", (req, res) => {
-  try {
-    const dbName = mongoose.connection.db.databaseName;
-    res.json({ connectedDatabase: dbName });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const dbName = mongoose.connection.db.databaseName;
+  res.json({ connectedDatabase: dbName });
 });
 
 // 🟢 Default Route
