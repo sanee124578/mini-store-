@@ -21,16 +21,16 @@ const app = express();
 // 🟢 FINAL CORS — FIXED 100%
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://mini-store-frontend-qkle7tjqa-sanee-kumars-projects.vercel.app",
-      "https://mini-store-frontend-i59kixdew-sanee-kumars-projects.vercel.app"
-    ],
+    origin: true, // ✅ allow ALL origins (safe for now)
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true
   })
 );
+
+// ✅ Preflight fix (VERY IMPORTANT)
+app.options("*", cors());
+
 
 
 // 🧩 ES Module Path Fix
