@@ -2,14 +2,15 @@ import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema(
   {
-    // 👤 User who placed the order
+    /* 👤 User */
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
 
-    // 🛍️ Array of ordered items
+    /* 🛍️ Ordered Items (Snapshot) */
     items: [
       {
         product: {
@@ -17,20 +18,29 @@ const orderSchema = new mongoose.Schema(
           ref: "Product",
           required: true,
         },
-        name: { type: String, required: true },   // ✅ Product name
-        price: { type: Number, required: true },  // ✅ Product price at time of order
-        image: { type: String },                  // ✅ Product image (optional)
-        quantity: { type: Number, default: 1 },   // ✅ Product quantity
+        name: { type: String, required: true },
+        price: { type: Number, required: true },
+        image: { type: String },
+        quantity: {
+          type: Number,
+          required: true,
+          min: 1,
+          max: 10,
+        },
       },
     ],
 
-    // 💰 Total order amount
+    /* 💰 Totals */
+    totalItems: {
+      type: Number,
+      required: true,
+    },
     totalAmount: {
       type: Number,
       required: true,
     },
 
-    // 🏠 Shipping Address (from user at checkout)
+    /* 🏠 Shipping Address */
     shippingAddress: {
       name: { type: String, required: true },
       phone: { type: String, required: true },
@@ -40,24 +50,53 @@ const orderSchema = new mongoose.Schema(
       pincode: { type: String, required: true },
     },
 
-    // 🚚 Order status
+    /* 🚚 Order Status */
     status: {
       type: String,
       enum: ["Pending", "Processing", "Delivered", "Cancelled"],
       default: "Pending",
+      index: true,
     },
 
-    // ❌ If user cancels order
+    /* ❌ Cancellation */
     cancelReason: { type: String, default: null },
     cancelledAt: { type: Date, default: null },
 
-    // 💳 Payment Info (optional for now)
+    /* 💳 Payment */
     paymentInfo: {
-      method: { type: String, default: "COD" }, // COD, Razorpay, etc.
+      method: {
+        type: String,
+        enum: ["COD", "Razorpay", "Stripe"],
+        default: "COD",
+      },
       transactionId: { type: String },
+      paymentStatus: {
+        type: String,
+        enum: ["Pending", "Paid", "Failed"],
+        default: "Pending",
+      },
+      paidAt: { type: Date },
     },
+
+    /* ⏱️ Lifecycle Dates */
+    deliveredAt: { type: Date },
   },
-  { timestamps: true } // ✅ adds createdAt & updatedAt
+  { timestamps: true }
 );
+
+/* 🔒 Auto calculate totals (safety) */
+orderSchema.pre("validate", function (next) {
+  this.totalItems = this.items.reduce(
+    (sum, item) => sum + item.quantity,
+    0
+  );
+
+  this.totalAmount = this.items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
+  next();
+});
 
 export default mongoose.model("Order", orderSchema);

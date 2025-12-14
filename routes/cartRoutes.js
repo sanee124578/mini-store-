@@ -1,97 +1,131 @@
 import express from "express";
 import mongoose from "mongoose";
 import Cart from "../models/Cart.js";
+import Product from "../models/ProductModel.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-/* 🛒 Get User’s Cart */
+/* -------------------------------------------------------------------------- */
+/* 🛒 Get User Cart */
+/* -------------------------------------------------------------------------- */
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const cart = await Cart.findOne({ userId: req.user.id })
+    let cart = await Cart.findOne({ userId: req.user.id })
       .populate("products.productId");
 
-    res.status(200).json(cart || { products: [] });
+    if (!cart) {
+      cart = await Cart.create({ userId: req.user.id, products: [] });
+    }
+
+    res.json({ success: true, cart });
   } catch (error) {
-    console.error("❌ Fetch Cart Error:", error.message);
-    res.status(500).json({ message: "Error fetching cart", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching cart",
+    });
   }
 });
 
-/* ➕ Add Product to Cart (also handles Increment / Decrement) */
+/* -------------------------------------------------------------------------- */
+/* ➕ Add / Update Cart Item */
+/* -------------------------------------------------------------------------- */
 router.post("/add", verifyToken, async (req, res) => {
   try {
-    const { productId, quantity = 1 } = req.body;
+    let { productId, quantity = 1 } = req.body;
 
-    if (!productId) {
-      return res.status(400).json({ message: "Product ID is required" });
+    if (!productId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Product ID is required" });
+
+    // quantity control
+    quantity = Number(quantity);
+    if (isNaN(quantity) || quantity < -5 || quantity > 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid quantity value",
+      });
     }
 
-    // 🧠 Ensure ObjectId conversion
+    // product existence
+    const product = await Product.findById(productId);
+    if (!product)
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+
+    let cart = await Cart.findOne({ userId: req.user.id });
+    if (!cart) cart = new Cart({ userId: req.user.id, products: [] });
+
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
-    // 🔍 Find user's existing cart
-    let cart = await Cart.findOne({ userId: req.user.id });
-    if (!cart) {
-      cart = new Cart({ userId: req.user.id, products: [] });
-    }
-
-    // 🔁 Find if product already in cart
-    const existingIndex = cart.products.findIndex(
+    const index = cart.products.findIndex(
       (p) => p.productId.toString() === productObjectId.toString()
     );
 
-    if (existingIndex > -1) {
-      // ✅ Increment or Decrement quantity
-      cart.products[existingIndex].quantity += quantity;
+    if (index > -1) {
+      cart.products[index].quantity += quantity;
 
-      // ❌ If quantity <= 0, remove item
-      if (cart.products[existingIndex].quantity <= 0) {
-        cart.products.splice(existingIndex, 1);
+      if (cart.products[index].quantity <= 0) {
+        cart.products.splice(index, 1);
       }
     } else if (quantity > 0) {
-      // ✅ Add new product only if positive quantity
       cart.products.push({ productId: productObjectId, quantity });
     }
 
-    // 💾 Save and populate
-    const savedCart = await cart.save();
-    const populatedCart = await savedCart.populate("products.productId");
+    await cart.save();
+    await cart.populate("products.productId");
 
-    console.log("✅ Cart Updated Successfully:", req.user.id);
-    res.status(200).json(populatedCart);
+    res.json({ success: true, cart });
   } catch (error) {
-    console.error("❌ Add to Cart Error:", error.message);
-    res.status(500).json({ message: "Error adding to cart", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error updating cart",
+    });
   }
 });
 
-/* ❌ Remove Specific Product */
+/* -------------------------------------------------------------------------- */
+/* ❌ Remove Item from Cart */
+/* -------------------------------------------------------------------------- */
 router.delete("/remove/:id", verifyToken, async (req, res) => {
   try {
+    const productObjectId = new mongoose.Types.ObjectId(req.params.id);
+
     const cart = await Cart.findOneAndUpdate(
       { userId: req.user.id },
-      { $pull: { products: { productId: req.params.id } } },
+      { $pull: { products: { productId: productObjectId } } },
       { new: true }
     ).populate("products.productId");
 
-    console.log("🗑️ Removed product:", req.params.id);
-    res.status(200).json(cart);
+    res.json({ success: true, cart });
   } catch (error) {
-    console.error("❌ Remove Error:", error.message);
-    res.status(500).json({ message: "Error removing item", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error removing item from cart",
+    });
   }
 });
 
-/* 🧹 Clear Entire Cart */
+/* -------------------------------------------------------------------------- */
+/* 🧹 Clear Cart */
+/* -------------------------------------------------------------------------- */
 router.delete("/clear", verifyToken, async (req, res) => {
   try {
-    await Cart.findOneAndDelete({ userId: req.user.id });
-    console.log("🧹 Cart cleared for user:", req.user.id);
-    res.status(200).json({ message: "Cart cleared successfully" });
+    const cart = await Cart.findOne({ userId: req.user.id });
+    if (!cart)
+      return res.json({ success: true, cart: { products: [] } });
+
+    cart.products = [];
+    await cart.save();
+
+    res.json({ success: true, message: "Cart cleared", cart });
   } catch (error) {
-    console.error("❌ Clear Cart Error:", error.message);
-    res.status(500).json({ message: "Error clearing cart", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error clearing cart",
+    });
   }
 });
 

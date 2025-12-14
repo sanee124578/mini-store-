@@ -7,7 +7,6 @@ import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Cloudinary Storage
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -17,60 +16,65 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-
-// ✅ Get all products (MAIN ROUTE)
+// Get all products
 router.get("/", async (req, res) => {
   try {
     const products = await Product.find();
-    res.json(products);
+    res.json({ success: true, products });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-
-// Product Search
+// Search
 router.get("/search", async (req, res) => {
   const query = req.query.q;
-  if (!query) return res.json([]);
+  if (!query) return res.json({ success: true, products: [] });
 
   const products = await Product.find({
     name: { $regex: query, $options: "i" },
   }).limit(10);
 
-  res.json(products);
+  res.json({ success: true, products });
 });
 
+// Add product (Admin)
+router.post(
+  "/add",
+  verifyToken,
+  isAdmin,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { name, category, price, stock, description } = req.body;
 
-// Add Product (Admin only)
-router.post("/add", verifyToken, isAdmin, async (req, res) => {
+      const product = await Product.create({
+        name,
+        category,
+        price,
+        stock,
+        description,
+        image: req.file?.path,
+      });
+
+      res.status(201).json({ success: true, product });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+);
+
+// Delete product
+router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
   try {
-    const { name, category, price, stock, image, description } = req.body;
+    const deleted = await Product.findByIdAndDelete(req.params.id);
+    if (!deleted)
+      return res.status(404).json({ message: "Product not found" });
 
-    const newProduct = await Product.create({
-      name,
-      category,
-      price,
-      stock,
-      image,
-      description,
-    });
-
-    res.status(201).json({
-      message: "Product added successfully",
-      product: newProduct,
-    });
+    res.json({ success: true, message: "Product deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
-
-
-// Delete Product
-router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
-  await Product.findByIdAndDelete(req.params.id);
-  res.json({ message: "Product deleted" });
-});
-
 
 export default router;

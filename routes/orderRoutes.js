@@ -1,5 +1,6 @@
 import express from "express";
 import Order from "../models/orderModel.js";
+import Product from "../models/ProductModel.js";
 import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -11,11 +12,11 @@ router.get("/all", verifyToken, isAdmin, async (req, res) => {
   try {
     const orders = await Order.find()
       .populate("user", "name email")
-      .populate("items.product", "name price")
+      .populate("items.product", "name price image")
       .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, orders });
-  } catch (err) {
-    console.error("❌ Error fetching all orders:", err.message);
+
+    res.json({ success: true, orders });
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while fetching orders",
@@ -32,9 +33,8 @@ router.get("/my-orders", verifyToken, async (req, res) => {
       .populate("items.product", "name price image")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, orders });
-  } catch (err) {
-    console.error("❌ Error fetching user orders:", err.message);
+    res.json({ success: true, orders });
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while fetching orders",
@@ -43,13 +43,12 @@ router.get("/my-orders", verifyToken, async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 🛒 USER: Create New Order (with shipping address) */
+/* 🛒 USER: Create New Order (SECURE) */
 /* -------------------------------------------------------------------------- */
 router.post("/create", verifyToken, async (req, res) => {
   try {
-    const { items, totalAmount, shippingAddress } = req.body;
+    const { items, shippingAddress } = req.body;
 
-    // ✅ Validate
     if (!items || items.length === 0) {
       return res
         .status(400)
@@ -62,23 +61,33 @@ router.post("/create", verifyToken, async (req, res) => {
         .json({ success: false, message: "Shipping address is required" });
     }
 
-    // ✅ Create new order
-    const newOrder = new Order({
+    // 🔐 Calculate totalAmount on server
+    let totalAmount = 0;
+
+    for (const item of items) {
+      const product = await Product.findById(item.product);
+      if (!product)
+        return res
+          .status(404)
+          .json({ success: false, message: "Product not found" });
+
+      totalAmount += product.price * item.quantity;
+    }
+
+    const order = await Order.create({
       user: req.user.id,
       items,
       totalAmount,
-      shippingAddress, // ✅ Correct field
+      shippingAddress,
+      status: "Pending",
     });
-
-    await newOrder.save();
 
     res.status(201).json({
       success: true,
-      message: "✅ Order placed successfully!",
-      order: newOrder,
+      message: "Order placed successfully",
+      order,
     });
-  } catch (err) {
-    console.error("❌ Error creating order:", err);
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while creating order",
@@ -93,30 +102,28 @@ router.put("/update/:id", verifyToken, isAdmin, async (req, res) => {
   try {
     const { status } = req.body;
 
-    if (!["Pending", "Processing", "Delivered", "Cancelled"].includes(status)) {
+    const allowedStatus = ["Pending", "Processing", "Delivered", "Cancelled"];
+    if (!allowedStatus.includes(status)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid order status" });
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
-    if (!updatedOrder)
+    const order = await Order.findById(req.params.id);
+    if (!order)
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
 
-    res.status(200).json({
+    order.status = status;
+    await order.save();
+
+    res.json({
       success: true,
-      message: "✅ Order status updated successfully",
-      order: updatedOrder,
+      message: "Order status updated successfully",
+      order,
     });
-  } catch (err) {
-    console.error("❌ Error updating order:", err.message);
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while updating order",
@@ -125,23 +132,21 @@ router.put("/update/:id", verifyToken, isAdmin, async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* ❌ ADMIN: Delete an Order */
+/* ❌ ADMIN: Delete Order */
 /* -------------------------------------------------------------------------- */
 router.delete("/delete/:id", verifyToken, isAdmin, async (req, res) => {
   try {
-    const deletedOrder = await Order.findByIdAndDelete(req.params.id);
-
-    if (!deletedOrder)
+    const deleted = await Order.findByIdAndDelete(req.params.id);
+    if (!deleted)
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
 
-    res.status(200).json({
+    res.json({
       success: true,
-      message: "🗑️ Order deleted successfully",
+      message: "Order deleted successfully",
     });
-  } catch (err) {
-    console.error("❌ Error deleting order:", err.message);
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while deleting order",
@@ -150,24 +155,27 @@ router.delete("/delete/:id", verifyToken, isAdmin, async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 🛑 USER: Cancel My Order (with reason) */
+/* 🛑 USER: Cancel My Order */
 /* -------------------------------------------------------------------------- */
 router.put("/cancel/:id", verifyToken, async (req, res) => {
   try {
-    const orderId = req.params.id;
     const { reason } = req.body;
 
-    const order = await Order.findOne({ _id: orderId, user: req.user.id });
+    const order = await Order.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+    });
+
     if (!order)
       return res.status(404).json({
         success: false,
-        message: "Order not found or unauthorized",
+        message: "Order not found",
       });
 
-    if (order.status === "Delivered") {
+    if (order.status !== "Pending") {
       return res.status(400).json({
         success: false,
-        message: "Delivered orders cannot be cancelled",
+        message: "Only pending orders can be cancelled",
       });
     }
 
@@ -177,29 +185,16 @@ router.put("/cancel/:id", verifyToken, async (req, res) => {
 
     await order.save();
 
-    res.status(200).json({
+    res.json({
       success: true,
-      message: "❌ Order cancelled successfully!",
+      message: "Order cancelled successfully",
       order,
     });
-  } catch (err) {
-    console.error("❌ Error cancelling order:", err.message);
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error while cancelling order",
     });
-  }
-});
-
-/* -------------------------------------------------------------------------- */
-/* ✅ Admin Shortcut Route */
-/* -------------------------------------------------------------------------- */
-router.get("/", verifyToken, isAdmin, async (req, res) => {
-  try {
-    const orders = await Order.find().populate("user", "name email");
-    res.status(200).json(orders);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
   }
 });
 

@@ -8,30 +8,33 @@ import upload from "../middleware/uploadMiddleware.js";
 const router = express.Router();
 
 /* -------------------------------------------------------------------------- */
-/* 🧠 USER PROFILE ROUTES */
+/* 👤 USER PROFILE */
 /* -------------------------------------------------------------------------- */
 
-// ✅ Get logged-in user profile
+// Get profile
 router.get("/profile", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
     res.json({ success: true, user });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ✅ Update user profile
+// Update profile
 router.put("/profile", verifyToken, async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const user = await User.findById(req.user.id);
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    user.name = name || user.name;
-    user.email = email || user.email;
+    if (name) user.name = name;
+    if (email) user.email = email;
 
     if (password) {
       const salt = await bcrypt.genSalt(10);
@@ -39,133 +42,172 @@ router.put("/profile", verifyToken, async (req, res) => {
     }
 
     await user.save();
-    res.json({ success: true, message: "Profile updated successfully", user });
+
+    const safeUser = user.toObject();
+    delete safeUser.password;
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: safeUser,
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 📸 Upload profile image
-// 📸 Profile Image Upload Route
-router.post("/upload", verifyToken, upload.single("profile"), async (req, res) => {
+// Upload profile image
+router.post(
+  "/upload",
+  verifyToken,
+  upload.single("profile"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res
+          .status(400)
+          .json({ success: false, message: "No file uploaded" });
+
+      const user = await User.findById(req.user.id);
+      if (!user)
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+
+      user.profileImage = req.file.path; // Cloudinary / absolute URL
+      await user.save();
+
+      res.json({
+        success: true,
+        message: "Profile image uploaded successfully",
+        imageUrl: req.file.path,
+      });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ success: false, message: "Server error uploading image" });
+    }
+  }
+);
+
+/* -------------------------------------------------------------------------- */
+/* 📦 USER ORDERS & WISHLIST */
+/* -------------------------------------------------------------------------- */
+
+// Get orders
+router.get("/orders", verifyToken, async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ message: "No file uploaded!" });
+    const orders = await Order.find({ user: req.user.id })
+      .populate("items.product", "name price image");
 
+    res.json({ success: true, orders });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get wishlist
+router.get("/wishlist", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate("wishlist");
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    res.json({ success: true, wishlist: user.wishlist || [] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 🏠 ADDRESS MANAGEMENT */
+/* -------------------------------------------------------------------------- */
+
+// Get addresses
+router.get("/addresses", verifyToken, async (req, res) => {
+  try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    // Store relative path or absolute URL
-    const imagePath = `/uploads/${req.file.filename}`;
-    user.profileImage = imagePath;
+    res.json({ success: true, addresses: user.addresses || [] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Add address
+router.post("/addresses", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    user.addresses.push(req.body);
     await user.save();
 
     res.json({
       success: true,
-      message: "Profile image uploaded successfully!",
-      imageUrl: imagePath,
+      message: "Address added successfully",
+      addresses: user.addresses,
     });
   } catch (error) {
-    console.error("❌ Upload error:", error);
-    res.status(500).json({ message: "Server error uploading image" });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/* 🧾 USER ORDERS + WISHLIST */
-/* -------------------------------------------------------------------------- */
-
-// ✅ Get user's orders
-router.get("/orders", verifyToken, async (req, res) => {
-  try {
-    const orders = await Order.find({ user: req.user.id }).populate("items.product", "name price image");
-    res.json({ success: true, orders });
-  } catch (error) {
-    console.error("❌ Error fetching orders:", error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// ✅ Get user's wishlist
-router.get("/wishlist", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).populate("wishlist");
-    res.json({ success: true, wishlist: user.wishlist });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-/* -------------------------------------------------------------------------- */
-/* 🏠 USER ADDRESS MANAGEMENT (ADD / UPDATE / DELETE) */
-/* -------------------------------------------------------------------------- */
-
-// ✅ Get all addresses of logged-in user
-router.get("/addresses", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    res.json({ success: true, addresses: user.addresses || [] });
-  } catch (error) {
-    console.error("Error fetching addresses:", error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// ✅ Add new address
-router.post("/addresses", verifyToken, async (req, res) => {
-  try {
-    const { name, phone, address, city, state, pincode } = req.body;
-    const user = await User.findById(req.user.id);
-
-    const newAddress = { name, phone, address, city, state, pincode };
-    user.addresses.push(newAddress);
-    await user.save();
-
-    res.json({ success: true, message: "Address added successfully", addresses: user.addresses });
-  } catch (error) {
-    console.error("Error adding address:", error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// ✅ Update address
+// Update address
 router.put("/addresses/:id", verifyToken, async (req, res) => {
   try {
-    const { name, phone, address, city, state, pincode } = req.body;
     const user = await User.findById(req.user.id);
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    const index = user.addresses.findIndex((a) => a._id.toString() === req.params.id);
-    if (index === -1) return res.status(404).json({ message: "Address not found" });
+    const index = user.addresses.findIndex(
+      (a) => a._id.toString() === req.params.id
+    );
+    if (index === -1)
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
 
     user.addresses[index] = {
       ...user.addresses[index]._doc,
-      name,
-      phone,
-      address,
-      city,
-      state,
-      pincode,
+      ...req.body,
     };
 
     await user.save();
-    res.json({ success: true, message: "Address updated successfully", addresses: user.addresses });
+
+    res.json({
+      success: true,
+      message: "Address updated successfully",
+      addresses: user.addresses,
+    });
   } catch (error) {
-    console.error("Error updating address:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ✅ Delete address
+// Delete address
 router.delete("/addresses/:id", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    user.addresses = user.addresses.filter((a) => a._id.toString() !== req.params.id);
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    user.addresses = user.addresses.filter(
+      (a) => a._id.toString() !== req.params.id
+    );
+
     await user.save();
 
-    res.json({ success: true, message: "Address deleted successfully", addresses: user.addresses });
+    res.json({
+      success: true,
+      message: "Address deleted successfully",
+      addresses: user.addresses,
+    });
   } catch (error) {
-    console.error("Error deleting address:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
